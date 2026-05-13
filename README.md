@@ -13,7 +13,7 @@ In Unity, open Package Manager and install from the Git URL:
 4. Enter:
 
 ```text
-https://github.com/rdpolarity/RuntimeDebugUI.git#v0.1.0
+https://github.com/rdpolarity/RuntimeDebugUI.git
 ```
 
 ## Usage
