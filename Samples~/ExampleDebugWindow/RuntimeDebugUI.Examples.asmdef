@@ -1,0 +1,16 @@
+{
+    "name": "RuntimeDebugUI.Examples",
+    "rootNamespace": "",
+    "references": [
+        "RuntimeDebugUI"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

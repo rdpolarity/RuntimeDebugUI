@@ -1,0 +1,27 @@
+{
+  "name": "com.rdpolarity.runtime-debug-ui",
+  "version": "0.1.0",
+  "displayName": "Runtime Debug UI",
+  "description": "An F1 runtime IMGUI debug menu for Unity editor and development builds.",
+  "unity": "2022.3",
+  "dependencies": {
+    "com.unity.inputsystem": "1.7.0"
+  },
+  "samples": [
+    {
+      "displayName": "Example Debug Window",
+      "description": "Template RuntimeDebugWindow implementation.",
+      "path": "Samples~/ExampleDebugWindow"
+    }
+  ],
+  "keywords": [
+    "debug",
+    "runtime",
+    "imgui",
+    "tools"
+  ],
+  "author": {
+    "name": "rdpolarity"
+  },
+  "license": "UNLICENSED"
+}
