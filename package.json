@@ -4,9 +4,24 @@
   "displayName": "Runtime Debug UI",
   "description": "An F1 runtime IMGUI debug menu for Unity editor and development builds.",
   "unity": "2022.3",
+  "hideInEditor": false,
   "dependencies": {
     "com.unity.inputsystem": "1.7.0"
   },
+  "files": [
+    "package.json",
+    "package.json.meta",
+    "Runtime",
+    "Runtime.meta",
+    "Samples~",
+    "Documentation~",
+    "CHANGELOG.md",
+    "CHANGELOG.md.meta",
+    "LICENSE.md",
+    "LICENSE.md.meta",
+    "README.md",
+    "README.md.meta"
+  ],
   "samples": [
     {
       "displayName": "Example Debug Window",
