@@ -1,4 +1,3 @@
-#if UNITY_EDITOR || DEVELOPMENT_BUILD
 public static class RuntimeDebugSymbols
 {
     public const string Analytics = "\uef3e";
@@ -4162,4 +4161,3 @@ public static class RuntimeDebugSymbols
     public const string Docs = "\uea7d";
     public const string BrandFamily = "\uf4f1";
 }
-#endif

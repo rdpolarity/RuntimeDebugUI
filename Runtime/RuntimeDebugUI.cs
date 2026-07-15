@@ -1,4 +1,3 @@
-#if UNITY_EDITOR || DEVELOPMENT_BUILD
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -142,7 +141,7 @@ public abstract class RuntimeDebugWindow : MonoBehaviour
     private Vector2 scroll;
 
     public abstract string Title { get; }
-    public virtual string Id => $"{GetType().FullName}:{GetInstanceID()}";
+    public virtual string Id => $"{GetType().FullName}:{GetEntityId()}";
     public virtual string Icon => RuntimeDebugSymbols.BugReport;
     public virtual string IconFallback => "DBG";
     public virtual bool IconFilled => true;
@@ -224,6 +223,7 @@ public sealed class RuntimeDebugUI : MonoBehaviour
     private bool pointerBlocked;
     private bool pointerCaptureActive;
     private Rect hubRect = new Rect(12f, 12f, HubWidth, 430f);
+    private Vector2 hubScroll;
     private GUISkin debugSkin;
     private GUIStyle hubStyle;
     private GUIStyle titleStyle;
@@ -250,17 +250,26 @@ public sealed class RuntimeDebugUI : MonoBehaviour
     private Texture2D scrollbarThumbTexture;
     private RuntimeDebugContext cachedContext;
     private int cachedContextFrame = -1;
+    private static bool debugModeActive;
 
-    public static bool IsVisible => instance != null && instance.visible;
-    public static bool IsPointerBlocked => instance != null && instance.IsPointerBlockedNow();
-    public static bool IsPointerOverDebugUi => instance != null && instance.ContainsGuiPoint(GetCurrentGuiPointerPosition());
-    public static bool IsGuiPointOverDebugUi(Vector2 guiPosition) => instance != null && instance.ContainsGuiPoint(guiPosition);
+    public static bool IsDebugModeActive => debugModeActive;
+    public static bool IsVisible => debugModeActive && instance != null && instance.visible;
+    public static bool IsPointerBlocked => debugModeActive && instance != null && instance.IsPointerBlockedNow();
+    public static bool IsPointerOverDebugUi => debugModeActive && instance != null && instance.ContainsGuiPoint(GetCurrentGuiPointerPosition());
+    public static bool IsGuiPointOverDebugUi(Vector2 guiPosition) => debugModeActive && instance != null && instance.ContainsGuiPoint(guiPosition);
     public static event Action<bool> PauseStateChanged;
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
     private static void Bootstrap()
     {
         EnsureInstance();
+    }
+
+    public static GUISkin AcquireSkin()
+    {
+        RuntimeDebugUI ui = EnsureInstance();
+        ui.EnsureStyles();
+        return ui.debugSkin;
     }
 
     public static void Register(RuntimeDebugWindow window)
@@ -277,6 +286,93 @@ public sealed class RuntimeDebugUI : MonoBehaviour
             return;
 
         instance.UnregisterWindow(window);
+    }
+
+    public static void SetDebugModeActive(bool active)
+    {
+        if (debugModeActive == active)
+            return;
+
+        debugModeActive = active;
+        if (!debugModeActive && instance != null)
+            instance.SetVisible(false);
+    }
+
+    public static void SetHubVisible(bool value)
+    {
+        if (value && !debugModeActive)
+            return;
+
+        EnsureInstance().SetVisible(value);
+    }
+
+    public static void ToggleVisible()
+    {
+        if (!debugModeActive)
+            return;
+
+        RuntimeDebugUI ui = EnsureInstance();
+        ui.SetVisible(!ui.visible);
+    }
+
+    public static bool IsWindowOpen(RuntimeDebugWindow window)
+    {
+        if (window == null || instance == null)
+            return false;
+
+        WindowState state = instance.FindWindowState(window);
+        return state != null && state.Open;
+    }
+
+    public static void SetWindowOpen(RuntimeDebugWindow window, bool open, bool revealHub = true)
+    {
+        if (window == null)
+            return;
+
+        if (open && !debugModeActive)
+            return;
+
+        RuntimeDebugUI ui = EnsureInstance();
+        WindowState state = ui.FindWindowState(window);
+        if (state == null)
+        {
+            ui.RegisterWindow(window);
+            state = ui.FindWindowState(window);
+        }
+
+        if (state == null)
+            return;
+
+        if (revealHub && open)
+            ui.SetVisible(true);
+
+        ui.SetWindowOpen(state, open, ui.GetContext());
+    }
+
+    public static void ToggleWindow(RuntimeDebugWindow window, bool revealHub = true)
+    {
+        if (window == null)
+            return;
+
+        if (!debugModeActive)
+            return;
+
+        RuntimeDebugUI ui = EnsureInstance();
+        WindowState state = ui.FindWindowState(window);
+        if (state == null)
+        {
+            ui.RegisterWindow(window);
+            state = ui.FindWindowState(window);
+        }
+
+        if (state == null)
+            return;
+
+        bool open = !state.Open || (!ui.visible && !state.Pinned);
+        if (revealHub && open)
+            ui.SetVisible(true);
+
+        ui.SetWindowOpen(state, open, ui.GetContext());
     }
 
     private static RuntimeDebugUI EnsureInstance()
@@ -317,6 +413,14 @@ public sealed class RuntimeDebugUI : MonoBehaviour
 
     private void Update()
     {
+        if (!debugModeActive)
+        {
+            if (visible)
+                SetVisible(false);
+            UpdatePointerBlockState();
+            return;
+        }
+
         UpdatePointerBlockState();
 
         Keyboard keyboard = Keyboard.current;
@@ -328,6 +432,9 @@ public sealed class RuntimeDebugUI : MonoBehaviour
 
     private void OnGUI()
     {
+        if (!debugModeActive)
+            return;
+
         RuntimeDebugContext context = GetContext();
         if (!visible && !HasPinnedOpenWindows(context))
             return;
@@ -407,6 +514,11 @@ public sealed class RuntimeDebugUI : MonoBehaviour
         windows.Sort(CompareWindows);
     }
 
+    private WindowState FindWindowState(RuntimeDebugWindow window)
+    {
+        return windows.Find(state => state.Window == window);
+    }
+
     private void UnregisterWindow(RuntimeDebugWindow window)
     {
         WindowState state = windows.Find(candidate => candidate.Window == window);
@@ -441,13 +553,28 @@ public sealed class RuntimeDebugUI : MonoBehaviour
 
     private void DrawHub(RuntimeDebugContext context)
     {
-        hubRect.height = Mathf.Min(Screen.height - 24f, 560f);
+        int visibleWindows = 0;
+        for (int i = 0; i < windows.Count; i++)
+        {
+            WindowState state = windows[i];
+            if (state.Window != null && state.Window.IsAvailable(context))
+                visibleWindows++;
+        }
+
+        GUIContent pauseContent = new GUIContent("Pause gameplay while open");
+        float toggleHeight = debugSkin.toggle.CalcHeight(pauseContent, hubRect.width - 32f);
+        float headerHeight = 14f + 38f + 16f + toggleHeight + 12f + 26f + 14f;
+        float listHeight = visibleWindows > 0 ? visibleWindows * 50f : 24f;
+        float maxHeight = Screen.height - 24f;
+        hubRect.height = Mathf.Min(headerHeight + listHeight, maxHeight);
+        bool needsScroll = headerHeight + listHeight > maxHeight;
+
         GUILayout.BeginArea(hubRect, hubStyle);
         DrawHubChrome();
         DrawHubTitle();
         GUILayout.Space(16f);
 
-        bool nextPauseGameplay = GUILayout.Toggle(pauseGameplay, "Pause gameplay while open");
+        bool nextPauseGameplay = GUILayout.Toggle(pauseGameplay, pauseContent);
         if (nextPauseGameplay != pauseGameplay)
         {
             pauseGameplay = nextPauseGameplay;
@@ -457,19 +584,23 @@ public sealed class RuntimeDebugUI : MonoBehaviour
         GUILayout.Space(12f);
         DrawHubSectionTitle("Windows", RuntimeDebugSymbols.Dashboard);
 
-        int visibleWindows = 0;
+        if (needsScroll)
+            hubScroll = GUILayout.BeginScrollView(hubScroll);
+
         for (int i = 0; i < windows.Count; i++)
         {
             WindowState state = windows[i];
             if (state.Window == null || !state.Window.IsAvailable(context))
                 continue;
 
-            visibleWindows++;
             DrawWindowButton(state, context);
         }
 
         if (visibleWindows == 0)
             GUILayout.Label("No debug windows are available in this context.");
+
+        if (needsScroll)
+            GUILayout.EndScrollView();
 
         GUILayout.EndArea();
     }
@@ -748,6 +879,13 @@ public sealed class RuntimeDebugUI : MonoBehaviour
 
     private void UpdatePointerBlockState()
     {
+        if (!debugModeActive)
+        {
+            pointerBlocked = false;
+            pointerCaptureActive = false;
+            return;
+        }
+
         RuntimeDebugContext context = GetContext();
         if (!visible && !HasPinnedOpenWindows(context))
         {
@@ -1426,4 +1564,3 @@ public static class RuntimeDebugGuiUtility
         GUI.DrawTextureWithTexCoords(drawRect, texture, uv, true);
     }
 }
-#endif
